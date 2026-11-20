@@ -4,7 +4,9 @@
 
 不背孤立单词表，不做刷题软件，也不堆砌打卡与记忆曲线；你可以在纸质试卷或其他软件里安心刷题，做完后再打开它，从刚才读过的文章里圈出想学的词、连同原句收进本子，用离线词典对照释义、写下自己的整理，在日后重读文章时再次遇见。
 
-> 最新版本：[**v0.1.0 · 首个可用版本**](https://github.com/AyuSne/english-learning/releases/latest)（Windows x64）
+> 最新版本：
+> - **安卓**：[v0.1.0-mobile](https://github.com/8netroo8/sudu-english-apk/releases/latest)（APK 约 6.7 MB，调试签名）
+> - **Windows x64**：[上游 v0.1.0](https://github.com/AyuSne/english-learning/releases/latest)
 
 <!-- 建议在这里放 1～2 张实际界面截图：阅读页圈词高亮 / 词条页多篇原句与回到原文 -->
 
