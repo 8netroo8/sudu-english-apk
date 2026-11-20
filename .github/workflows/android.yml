@@ -1,0 +1,141 @@
+name: 安卓 APK
+
+# 在 GitHub 的机器上装好 JDK 21 与 Android SDK，打出可安装的 APK。
+# 手动触发：仓库 Actions 页面 → 安卓 APK → Run workflow
+# 打完的 APK 在该次运行的 Artifacts 里下载（sudu-debug-apk / sudu-release-apk）。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'android/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - 'vite.mobile.config.ts'
+      - '.github/workflows/android.yml'
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    env:
+      # 桌面端才需要 Electron 二进制；CI 只跑 Web 构建，跳过能省 100MB 下载。
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      # 配置了签名密钥时才会产出 release 包，见 README「在线打包 APK」。
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建手机版 Web 产物
+        run: npm run build:mobile
+
+      - name: 同步进安卓工程
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 不用 android-actions/setup-android：它默认想装早已下架的 `tools` 包，
+      # 在 runner 的新镜像上直接 sdkmanager 失败。runner 自带 SDK，这里只补装需要的组件。
+      - name: 安装 Android SDK 组件
+        run: |
+          set -uo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -n1 || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "镜像里没有 sdkmanager，下载一份 cmdline-tools"
+            curl -fsSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "sdkmanager: $SDKMANAGER"
+          # licenses 的输入流关闭会让 yes 报 SIGPIPE，所以整条命令允许失败。
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      - name: 允许 gradlew 执行
+        run: chmod +x android/gradlew
+
+      # debug 包可以直接安装试用，不需要签名配置。
+      - name: 打包 debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 上传 debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sudu-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # 下面几步只在仓库配置了 ANDROID_KEYSTORE_BASE64 等 secrets 时生效。
+      - name: 还原签名文件
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/sudu-release.jks
+          cat >> android/app/build.gradle <<'EOF'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv('ANDROID_KEYSTORE_FILE') ?: '../sudu-release.jks')
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+          echo "ANDROID_KEYSTORE_FILE=$PWD/android/sudu-release.jks" >> "$GITHUB_ENV"
+
+      - name: 打包 release APK
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: 上传 release APK
+        if: env.KEYSTORE_BASE64 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sudu-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

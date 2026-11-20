@@ -1,0 +1,230 @@
+import { describe, expect, it } from 'vitest'
+import type { DictionaryLookup } from '../../shared/dictionary'
+import type {
+  ChangeMainFormResult,
+  CollectSelectionResult,
+  DeleteEntrySentenceResult,
+  EntryListResult,
+  EntryPage,
+  EntrySentenceTarget,
+  LearningNoteResult,
+  MergeEntriesResult,
+  MoveEntrySentenceResult,
+  ReselectEntrySentenceResult,
+  SetEntryLaterResult,
+  WordEntryCard
+} from '../../shared/entries'
+import type {
+  ArticleDeletionPreview,
+  ArticleDetail,
+  DeleteArticleResult,
+  HomeSummary,
+  ImportReport,
+  LibraryListing,
+  LibrarySearchResults,
+  MarkArticleCompletedResult,
+  RenameArticleResult
+} from '../../shared/library'
+import type {
+  ReadingProgressResult,
+  ReadingSettingsResult,
+  ReadingView
+} from '../../shared/reading'
+import type { SettingsOverview } from '../../shared/settings'
+import type { AppBootstrap } from '../../shared/types'
+import type { ArticleWordsView } from '../../shared/article-words'
+import { IPC_CHANNELS } from '../../shared/ipc-contract'
+import {
+  registerIpcHandlers,
+  type IpcHandlers,
+  type IpcInvokeEvent,
+  type IpcMainLike
+} from './register'
+
+const bootstrap: AppBootstrap = {
+  appVersion: '0.1.0',
+  isPackaged: false,
+  schemaVersion: 3,
+  theme: 'light',
+  corpusImport: { total: 0, imported: 0, updated: 0, skipped: 0, failed: [] }
+}
+
+function fakeIpcMain(): {
+  ipc: IpcMainLike
+  registered: Map<string, (event: unknown, payload: unknown) => unknown>
+} {
+  const registered = new Map<string, (event: unknown, payload: unknown) => unknown>()
+  const ipc: IpcMainLike = {
+    handle(channel, listener) {
+      registered.set(channel, listener)
+    }
+  }
+  return { ipc, registered }
+}
+
+function libraryHandlers() {
+  return {
+    'home:summary': (): HomeSummary => ({
+      library: { articleCount: 0, sessionCount: 0 },
+      continueReading: null,
+      completedArticleCount: 0,
+      recentEntries: [],
+      laterEntries: []
+    }),
+    'library:list': (): LibraryListing => ({ articleCount: 0, sessionCount: 0, sessions: [] }),
+    'library:reimport': (): ImportReport => ({
+      total: 0,
+      imported: 0,
+      updated: 0,
+      skipped: 0,
+      failed: []
+    }),
+    'library:detail': (): ArticleDetail | null => null,
+    'library:search': (payload: { query: string }): LibrarySearchResults => ({
+      query: payload.query,
+      results: []
+    }),
+    'library:rename': (payload: { articleId: string; title: string }): RenameArticleResult => ({
+      status: 'renamed',
+      articleId: payload.articleId,
+      title: payload.title
+    }),
+    'library:delete-preview': (): ArticleDeletionPreview | null => null,
+    'library:delete': (): DeleteArticleResult => ({ status: 'missing' })
+  }
+}
+
+function readingHandlers() {
+  return {
+    'reading:open': (): ReadingView | null => null,
+    'reading:words': (): ArticleWordsView | null => null,
+    'reading:complete': (): MarkArticleCompletedResult => ({ status: 'missing' }),
+    'reading:progress': (): ReadingProgressResult => ({ saved: false }),
+    'reading:settings': (): ReadingSettingsResult | null => null,
+    'reading:collect': (): CollectSelectionResult => ({
+      status: 'rejected',
+      reason: 'article'
+    })
+  }
+}
+
+function entriesHandlers() {
+  const missingNote = (): LearningNoteResult => ({ status: 'missing' })
+  return {
+    'entries:card': (): WordEntryCard | null => null,
+    'entries:delete-sentence': (): DeleteEntrySentenceResult => ({ status: 'missing' }),
+    'entries:list': (): EntryListResult => ({ total: 0, entries: [] }),
+    'entries:page': (): EntryPage | null => null,
+    'entries:sentence': (): EntrySentenceTarget | null => null,
+    'entries:merge': (): MergeEntriesResult => ({ status: 'missing' }),
+    'entries:main-form': (): ChangeMainFormResult => ({ status: 'missing' }),
+    'entries:move-sentence': (): MoveEntrySentenceResult => ({ status: 'missing' }),
+    'entries:reselect-sentence': (): ReselectEntrySentenceResult => ({ status: 'missing' }),
+    'entries:later': (): SetEntryLaterResult => ({ status: 'missing' }),
+    'entries:create-note': missingNote,
+    'entries:update-note': missingNote,
+    'entries:pin-note': missingNote,
+    'entries:delete-note': missingNote,
+    'entries:move-note': missingNote
+  }
+}
+
+function dictionaryHandlers() {
+  return {
+    'dictionary:lookup': (payload: { word: string }): DictionaryLookup => ({
+      status: 'missing',
+      query: payload.word.toLowerCase()
+    })
+  }
+}
+
+const settingsOverview: SettingsOverview = {
+  reading: {
+    fontSize: 20,
+    lineHeight: 1.8,
+    annotationsVisible: true,
+    weakHighlight: true
+  },
+  theme: 'light',
+  appVersion: '0.1.0',
+  electronVersion: '45.0.0',
+  dataDirectory: 'C:/data',
+  lastBackup: null,
+  lastSnapshot: null,
+  backupDirectory: 'C:/data/backups',
+  snapshotDirectory: 'C:/data/snapshots'
+}
+
+function settingsHandlers() {
+  return {
+    'settings:overview': (): SettingsOverview => settingsOverview,
+    'settings:reading-save': () => ({
+      saved: true,
+      preferences: settingsOverview.reading
+    }),
+    'settings:theme-save': () => ({ saved: true, theme: 'light' as const }),
+    'settings:backup-create': () => ({
+      status: 'cancelled' as const,
+      overview: settingsOverview
+    }),
+    'settings:restore-pick': () => ({ status: 'cancelled' as const }),
+    'settings:restore': () => ({
+      status: 'rejected' as const,
+      reason: 'missing' as const,
+      overview: settingsOverview
+    }),
+    'settings:open-data-directory': () => ({ opened: true, path: 'C:/data' })
+  }
+}
+
+describe('registerIpcHandlers', () => {
+  it('按契约注册每个 channel，调用时转给对应处理函数并传入调用事件', () => {
+    const { ipc, registered } = fakeIpcMain()
+    const received: unknown[] = []
+    const events: IpcInvokeEvent[] = []
+
+    registerIpcHandlers(ipc, {
+      ...libraryHandlers(),
+      ...readingHandlers(),
+      ...entriesHandlers(),
+      ...dictionaryHandlers(),
+      ...settingsHandlers(),
+      'app:bootstrap': (payload, event) => {
+        received.push(payload)
+        events.push(event)
+        return bootstrap
+      }
+    })
+
+    expect([...registered.keys()].sort()).toEqual([...IPC_CHANNELS].sort())
+    const listener = registered.get('app:bootstrap')
+    expect(listener).toBeDefined()
+    const event: IpcInvokeEvent = { sender: { send() {} } }
+    expect(listener?.(event, undefined)).toEqual(bootstrap)
+    expect(received).toEqual([undefined])
+    expect(events).toEqual([event])
+  })
+
+  it('契约里的 channel 没有处理函数时启动即报错', () => {
+    const { ipc } = fakeIpcMain()
+
+    expect(() =>
+      registerIpcHandlers(ipc, { ...dictionaryHandlers() } as unknown as IpcHandlers)
+    ).toThrow(/app:bootstrap/)
+  })
+
+  it('出现契约之外的 channel 时启动即报错', () => {
+    const { ipc } = fakeIpcMain()
+    const handlers = {
+      ...libraryHandlers(),
+      ...readingHandlers(),
+      ...entriesHandlers(),
+      ...dictionaryHandlers(),
+      ...settingsHandlers(),
+      'app:bootstrap': () => bootstrap,
+      'app:not-in-contract': () => bootstrap
+    } as unknown as IpcHandlers
+
+    expect(() => registerIpcHandlers(ipc, handlers)).toThrow(/app:not-in-contract/)
+  })
+})

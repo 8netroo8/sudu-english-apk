@@ -1,0 +1,486 @@
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import type {
+  ArticleDetail,
+  ImportReport,
+  LibraryListing,
+  LibrarySearchResults
+} from '../../../shared/library'
+import {
+  loadArticleDetail,
+  loadLibrary,
+  reimportCorpus,
+  searchLibrary
+} from '../api'
+import { failureText } from '../errors'
+import { ErrorBlock } from '../components/error-block'
+import { LibraryArticleActions } from '../library/article-actions'
+import { ArticleCollectedSection } from '../library/article-collected'
+import { libraryArticleMetaParts } from '../library/display'
+import { formatDay, progressText } from '../library/format'
+import { forgetLibraryArticle, navigate, replaceRoute } from '../navigate'
+import { parseView } from '../routes'
+import { useCompactLayout } from '../use-compact-layout'
+import { libraryViewState, updateLibraryViewState } from '../view-state'
+
+/**
+ * 文章库：左边按场次分组的列表（搜索时换成命中结果），右边是选中一篇的详情。
+ * 「继续阅读」把文章 id 交给阅读页，由阅读页记下最近打开并恢复上次位置。
+ */
+export function LibraryPage({
+  articleId,
+  corpusImport,
+  onReimport
+}: {
+  articleId: string | null
+  corpusImport: ImportReport
+  onReimport: (report: ImportReport) => void
+}) {
+  const [listing, setListing] = useState<LibraryListing | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [query, setQuery] = useState(() => libraryViewState().query)
+  const [found, setFound] = useState<LibrarySearchResults | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(articleId)
+  const [detail, setDetail] = useState<ArticleDetail | null>(null)
+  const [reimporting, setReimporting] = useState(false)
+  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const restoredScroll = useRef(false)
+  const compact = useCompactLayout()
+
+  useLayoutEffect(() => {
+    const node = rootRef.current?.closest('main')
+    if (!node) return
+    const remember = (): void => {
+      if (restoredScroll.current) updateLibraryViewState({ scrollTop: node.scrollTop })
+    }
+    node.addEventListener('scroll', remember)
+    return () => {
+      remember()
+      node.removeEventListener('scroll', remember)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (restoredScroll.current || listing === null) return
+    if (query.trim() !== '' && found?.query !== query.trim()) return
+    const node = rootRef.current?.closest('main')
+    if (!node) return
+    node.scrollTop = libraryViewState().scrollTop
+    restoredScroll.current = true
+  }, [found, listing, query])
+
+  useEffect(() => {
+    let active = true
+    setLoadError(null)
+    loadLibrary().then(
+      (value) => {
+        if (!active) return
+        setListing(value)
+        const firstId = value.sessions[0]?.articles[0]?.id ?? null
+        const current = parseView(window.location.hash)
+        const routeId = current.route === 'library' ? current.articleId : null
+        const routeStillExists =
+          routeId !== null &&
+          value.sessions.some((session) =>
+            session.articles.some((article) => article.id === routeId)
+          )
+        const resolved = routeStillExists ? routeId : firstId
+        setSelectedId(resolved)
+        if (resolved !== routeId) {
+          replaceRoute('library', resolved === null ? {} : { articleId: resolved })
+        }
+      },
+      (error: unknown) => {
+        if (active) setLoadError(failureText(error, '文章库没有读出来。'))
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [reloadToken])
+
+  useEffect(() => {
+    if (articleId !== null) setSelectedId(articleId)
+  }, [articleId])
+
+  useEffect(() => {
+    if (selectedId === null) {
+      setDetail(null)
+      return
+    }
+    let active = true
+    loadArticleDetail(selectedId).then(
+      (value) => {
+        if (active) setDetail(value)
+      },
+      (error: unknown) => {
+        if (active) setLoadError(failureText(error, '文章库没有读出来。'))
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [selectedId, reloadToken])
+
+  const trimmedQuery = query.trim()
+
+  useEffect(() => {
+    if (trimmedQuery === '') {
+      setFound(null)
+      return
+    }
+    let active = true
+    searchLibrary(trimmedQuery).then(
+      (value) => {
+        if (active) setFound(value)
+      },
+      (error: unknown) => {
+        if (active) setLoadError(failureText(error, '文章库没有读出来。'))
+      }
+    )
+    return () => {
+      active = false
+    }
+  }, [trimmedQuery, reloadToken])
+
+  useEffect(() => {
+    if (importMessage === null) return
+    const timer = window.setTimeout(() => setImportMessage(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [importMessage])
+
+  useEffect(() => {
+    if (hint === null) return
+    const timer = window.setTimeout(() => setHint(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [hint])
+
+  function open(articleId: string): void {
+    navigate('reading', { articleId, readingFrom: 'library' })
+  }
+
+  /**
+   * 手机上详情栏排在几十行列表之后，点一行只改选中状态看起来就是「没反应」。
+   * 宽窗口保持原样（先选中、再按「继续阅读」），窄屏点一下直接进阅读页。
+   */
+  function choose(articleId: string): void {
+    setSelectedId(articleId)
+    if (compact) {
+      open(articleId)
+      return
+    }
+    replaceRoute('library', { articleId })
+  }
+
+  function retryLoad(): void {
+    setLoadError(null)
+    setReloadToken((token) => token + 1)
+  }
+
+  /** 删掉当前这篇后，优先接上列表里的下一篇；没有就退回上一篇。 */
+  function nextArticleId(articleId: string): string | null {
+    if (listing === null) return null
+    const ids = listing.sessions.flatMap((session) => session.articles.map((article) => article.id))
+    const index = ids.indexOf(articleId)
+    if (index < 0) return ids[0] ?? null
+    return ids[index + 1] ?? ids[index - 1] ?? null
+  }
+
+  function articleRenamed(title: string): void {
+    setHint(`篇名已改为「${title}」。`)
+    setReloadToken((token) => token + 1)
+  }
+
+  function articleDeleted(articleId: string): void {
+    forgetLibraryArticle(articleId)
+    setDetail(null)
+    const next = nextArticleId(articleId)
+    setSelectedId(next)
+    replaceRoute('library', next === null ? {} : { articleId: next })
+    setHint('文章已删除。')
+    setReloadToken((token) => token + 1)
+  }
+
+  /** 修好随包语料后原地再导一遍，不必重启应用。 */
+  async function retryImport(): Promise<void> {
+    if (reimporting) return
+    setReimporting(true)
+    setImportMessage(null)
+    setLoadError(null)
+    try {
+      const report = await reimportCorpus()
+      onReimport(report)
+      setReloadToken((token) => token + 1)
+      setImportMessage(
+        report.failed.length === 0
+          ? `重新导入完成：${report.total} 篇都在库里了。`
+          : `重新导入完成：还有 ${report.failed.length} 篇没导进来。`
+      )
+    } catch (error) {
+      setLoadError(failureText(error, '重新导入没有完成，再试一次。'))
+    } finally {
+      setReimporting(false)
+    }
+  }
+
+  const failureCount = corpusImport.failed.length
+  // 以库里实际篇数为准：这一轮失败的那篇可能上一轮就已经导进来了。
+  const storedCount =
+    listing?.articleCount ??
+    corpusImport.imported + corpusImport.updated + corpusImport.skipped
+
+  return (
+    <div ref={rootRef} className="page page-wide library">
+      <header className="library-head">
+        <div>
+          <h1 className="page-title">文章库</h1>
+          <p className="library-count">
+            {listing === null
+              ? '正在读取本机资料库…'
+              : `${listing.articleCount} 篇 · ${listing.sessionCount} 个场次`}
+          </p>
+        </div>
+        <label className="library-search">
+          <input
+            type="search"
+            aria-label="搜篇名或正文"
+            placeholder="搜篇名或正文"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              updateLibraryViewState({ query: event.target.value })
+            }}
+          />
+        </label>
+      </header>
+
+      {failureCount > 0 ? (
+        <section className="library-warning" role="alert">
+          <p className="library-warning-title">
+            有 {failureCount} 篇没导进来，其余 {storedCount} 篇已在库里。
+          </p>
+          <ul className="library-warning-list">
+            {corpusImport.failed.map((failure) => (
+              <li key={failure.id}>
+                <span className="library-warning-id">{failure.id}</span>
+                {failure.reason}
+              </li>
+            ))}
+          </ul>
+          <div className="library-warning-actions">
+            <button
+              type="button"
+              className="button button-small"
+              disabled={reimporting}
+              onClick={() => void retryImport()}
+            >
+              {reimporting ? '正在重新导入…' : '重新导入'}
+            </button>
+            <span className="library-warning-hint">
+              再试一次；一直失败说明随包语料损坏，需要重新安装。
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      {loadError !== null ? (
+        <ErrorBlock message={loadError} onAction={retryLoad} />
+      ) : null}
+
+      <div className="library-columns">
+        <div className="library-list">
+          {listing !== null && listing.articleCount === 0 && failureCount === 0 ? (
+            <p className="empty-line">还没有文章。语料随应用分发，重新启动会再导入一次。</p>
+          ) : found !== null ? (
+            <SearchResults
+              query={found.query}
+              results={found.results}
+              selectedId={selectedId}
+              onSelect={choose}
+            />
+          ) : listing !== null ? (
+            listing.sessions.map((session) => (
+              <section key={session.id} className="library-session" aria-label={session.label}>
+                <h2 className="library-session-head">
+                  <span>{session.label}</span>
+                  <span className="library-session-count">{session.articles.length} 篇</span>
+                </h2>
+                <ul className="library-rows">
+                  {session.articles.map((article) => (
+                    <li key={article.id}>
+                      <button
+                        type="button"
+                        className="library-row"
+                        aria-current={article.id === selectedId ? 'true' : undefined}
+                        onClick={() => choose(article.id)}
+                      >
+                        <span className="library-row-name">{article.title}</span>
+                        <span className="library-row-meta">
+                          {libraryArticleMetaParts(article).join(' · ')}
+                        </span>
+                        <span className="library-row-progress">
+                          {progressText(article.progress)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
+          ) : null}
+        </div>
+
+        <aside className="library-detail" aria-label="文章详情">
+          {detail === null ? (
+            <p className="empty-line">在左边选一篇。</p>
+          ) : (
+            <>
+              <p className="eyebrow">这篇</p>
+              <h2 className="library-detail-title">{detail.title}</h2>
+              <dl className="library-meta">
+                <div>
+                  <dt>场次</dt>
+                  <dd>
+                    {detail.sessionLabel} · {detail.setLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt>题型</dt>
+                  <dd>{detail.kindLabel}</dd>
+                </div>
+                <div>
+                  <dt>篇幅</dt>
+                  <dd>
+                    {detail.wordCount} 词 · {detail.paragraphCount} 段 · {detail.sentenceCount} 句
+                  </dd>
+                </div>
+                <div>
+                  <dt>进度</dt>
+                  <dd>{progressText(detail.progress)}</dd>
+                </div>
+                <div>
+                  <dt>最近打开</dt>
+                  <dd>
+                    {detail.lastOpenedAt === null
+                      ? '还没打开过'
+                      : formatDay(detail.lastOpenedAt)}
+                  </dd>
+                </div>
+                {detail.pages === '' ? null : (
+                  <div>
+                    <dt>原卷</dt>
+                    <dd>{detail.pages}</dd>
+                  </div>
+                )}
+              </dl>
+              <div className="library-detail-actions">
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={() => open(detail.id)}
+                >
+                  {detail.progress.state === 'completed' ? '重读' : '继续阅读'}
+                </button>
+              </div>
+              <ArticleCollectedSection article={detail} />
+              <LibraryArticleActions
+                detail={detail}
+                onRenamed={articleRenamed}
+                onDeleted={articleDeleted}
+                onError={(message) => setLoadError(message)}
+              />
+            </>
+          )}
+        </aside>
+      </div>
+
+      {importMessage === null ? null : (
+        <p className="toast" role="status">
+          {importMessage}
+        </p>
+      )}
+      {hint === null ? null : (
+        <p className="toast" role="status">
+          {hint}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function SearchResults({
+  query,
+  results,
+  selectedId,
+  onSelect
+}: {
+  query: string
+  results: LibrarySearchResults['results']
+  selectedId: string | null
+  onSelect: (articleId: string) => void
+}) {
+  return (
+    <section className="library-session" aria-label={`「${query}」的搜索结果`}>
+      <h2 className="library-session-head">
+        <span>「{query}」的结果</span>
+        <span className="library-session-count">{results.length} 篇</span>
+      </h2>
+      {results.length === 0 ? (
+        <p className="empty-line">没有找到。换个词试试，篇名和正文都会搜。</p>
+      ) : (
+        <ul className="library-rows">
+          {results.map((result) => (
+            <li key={result.article.id}>
+              <button
+                type="button"
+                className="library-row library-row-search"
+                aria-current={result.article.id === selectedId ? 'true' : undefined}
+                onClick={() => onSelect(result.article.id)}
+              >
+                <span className="library-row-name">{result.article.title}</span>
+                <span className="library-row-meta">
+                  {libraryArticleMetaParts(result.article, { includeSession: true }).join(' · ')}
+                </span>
+                <span className="library-row-progress">
+                  {progressText(result.article.progress)}
+                </span>
+                <span className="library-snippet">
+                  <span className="library-hit">
+                    {result.matched === 'title' ? '篇名命中' : '正文命中'}
+                  </span>
+                  {highlight(result.snippet, query)}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** 把 <mark> 左右按原文字面切出来，不拼 HTML。 */
+function highlight(text: string, query: string): ReactNode[] {
+  const needle = query.toLowerCase()
+  if (needle === '') {
+    return [text]
+  }
+  const haystack = text.toLowerCase()
+  const parts: ReactNode[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const hit = haystack.indexOf(needle, cursor)
+    if (hit < 0) {
+      parts.push(text.slice(cursor))
+      break
+    }
+    if (hit > cursor) {
+      parts.push(text.slice(cursor, hit))
+    }
+    parts.push(<mark key={hit}>{text.slice(hit, hit + needle.length)}</mark>)
+    cursor = hit + needle.length
+  }
+  return parts
+}

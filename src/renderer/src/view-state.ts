@@ -1,0 +1,52 @@
+import type { EntryFilter, EntrySort } from './entries/entry-list'
+
+/** 浏览状态只属于当前窗口；刷新后由地址恢复对象，不恢复草稿。 */
+type EntriesViewState = {
+  query: string
+  sort: EntrySort
+  filter: EntryFilter
+  listScrollTop: number
+}
+
+let entriesState: EntriesViewState = {
+  query: '',
+  sort: 'recent',
+  filter: 'all',
+  listScrollTop: 0
+}
+const entryScrollTops = new Map<string | null, number>()
+let libraryState = { query: '', scrollTop: 0 }
+export type SettingsSection = 'reading' | 'appearance' | 'data' | 'about'
+let settingsSection: SettingsSection = 'reading'
+
+export function entriesViewState(): EntriesViewState {
+  return entriesState
+}
+
+export function updateEntriesViewState(patch: Partial<EntriesViewState>): void {
+  entriesState = { ...entriesState, ...patch }
+}
+
+export function entryScrollTop(entryId: string | null): number {
+  return entryScrollTops.get(entryId) ?? 0
+}
+
+export function updateEntryScrollTop(entryId: string | null, scrollTop: number): void {
+  entryScrollTops.set(entryId, scrollTop)
+}
+
+export function libraryViewState(): Readonly<typeof libraryState> {
+  return libraryState
+}
+
+export function updateLibraryViewState(patch: Partial<typeof libraryState>): void {
+  libraryState = { ...libraryState, ...patch }
+}
+
+export function settingsViewSection(): SettingsSection {
+  return settingsSection
+}
+
+export function updateSettingsViewSection(section: SettingsSection): void {
+  settingsSection = section
+}

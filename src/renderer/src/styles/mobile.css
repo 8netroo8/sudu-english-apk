@@ -1,0 +1,222 @@
+/**
+ * 手机壳层。桌面版的骨架是「238px 竖排侧栏 + 内容区」，
+ * 手机上换成「单列内容 + 固定底部导航」，并把安全区留出来（刘海屏 / 手势条）。
+ * 各页自己的断点已经在 reading/entries/library/settings 的 CSS 里，这里只管壳。
+ */
+
+/* 词条页的「返回列表」只在手机视图出现，桌面版不显示。 */
+.entries-back-list {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  .app {
+    display: block;
+    height: 100%;
+  }
+
+  /* 侧栏变成底部导航：图标行 + 文字行，横向可滚，避免导航项多了挤成一团。 */
+  .globals {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-top: 1px solid var(--rule);
+    border-right: 0;
+    background: color-mix(in srgb, var(--sunken) 92%, transparent);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    backdrop-filter: blur(12px);
+  }
+
+  .globals .brand,
+  .globals .nav-foot {
+    display: none;
+  }
+
+  .globals .nav {
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+    gap: 2px;
+    overflow-x: auto;
+    padding: 0;
+    scrollbar-width: none;
+  }
+
+  .globals .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .globals .nav-item {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 4px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .main {
+    height: 100%;
+    padding: 16px 14px calc(84px + env(safe-area-inset-bottom));
+    overscroll-behavior-y: contain;
+  }
+
+  .page {
+    max-width: none;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  /* 触屏没有悬停：把只在 hover 上出现的操作改成常驻，避免点不到。 */
+  .reading-sheet,
+  .entries-page {
+    padding-bottom: 8px;
+  }
+
+  /* 手指比鼠标粗，按钮与可点行都给到 40px 左右的落点。 */
+  .button {
+    min-height: 38px;
+    padding: 9px 14px;
+  }
+
+  .dialog,
+  .sheet,
+  .popover {
+    max-width: calc(100vw - 24px);
+  }
+
+  .toast {
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+
+  /* 阅读页顶栏：390px 放不下一排按钮，标题留第一行，操作整体换到第二行横向滚。 */
+  .reading-bar {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding: 8px 12px;
+  }
+
+  .reading-back {
+    height: 28px;
+    padding: 0 6px;
+    font-size: 12px;
+  }
+
+  .reading-bar-title {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .reading-bar-actions {
+    flex-basis: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .reading-bar-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .reading-tool {
+    flex: none;
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .reading-sheet {
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  }
+
+  /* 词条页：手机放不下三栏，拆成「列表」和「词条详情」两屏，靠 data-selected 切换。 */
+  .entries-page,
+  .entries-page[data-rail='closed'],
+  .entries-page[data-rail='open'] {
+    display: block;
+    max-width: none;
+  }
+
+  .entries-list {
+    position: static;
+    max-height: none;
+  }
+
+  .entries-page[data-selected='no'] .entries-main {
+    display: none;
+  }
+
+  .entries-page[data-selected='yes'] .entries-list {
+    display: none;
+  }
+
+  .entries-back-list {
+    display: inline-flex;
+    flex: none;
+    flex-basis: 100%;
+    align-self: flex-start;
+    margin-bottom: 4px;
+  }
+
+  .entries-main {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+
+  /* 底部导航固定在视口最上层，别被页面里的浮层吃掉。 */
+  .globals {
+    z-index: 60;
+  }
+
+  /* 触屏选词后浮在底部的「收为词条」按钮：避开手势条，别挡住正在读的段落。 */
+  .reading-collect-bar {
+    position: fixed;
+    right: 0;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: 0;
+    z-index: 55;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .reading-collect-button {
+    pointer-events: auto;
+    border-color: var(--amber);
+    box-shadow: 0 6px 20px rgba(60, 48, 30, 0.18);
+  }
+
+  [data-theme='dark'] .reading-collect-button {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* 极窄屏（老款手机竖屏）再收一档字号，避免标题折行成三行。 */
+@media (max-width: 380px) {
+  .page-title {
+    font-size: 18px;
+  }
+
+  .globals .nav-item {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+}

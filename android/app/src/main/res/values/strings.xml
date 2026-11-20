@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">素读</string>
+    <string name="title_activity_main">素读</string>
+    <string name="package_name">com.sudu.english</string>
+    <string name="custom_url_scheme">com.sudu.english</string>
+</resources>

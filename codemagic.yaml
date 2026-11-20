@@ -1,0 +1,38 @@
+# Codemagic 云端打包（可选，免费额度约 500 分钟/月）。
+# 用法：Codemagic 里添加这个仓库 → 选中工作流「素读 Android」→ Start new build → 结束后在 Artifacts 下载 APK。
+workflows:
+  sudu-android:
+    name: 素读 Android
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      node: 22
+      java: 21
+      # 需要签名的 release 包时，在 Codemagic 的 Environment variables 里配置：
+      #   ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+      groups:
+        - android_signing
+    scripts:
+      - name: 安装依赖
+        script: |
+          export ELECTRON_SKIP_BINARY_DOWNLOAD=1
+          npm ci
+      - name: 构建手机版 Web 产物
+        script: npm run build:mobile
+      - name: 同步进安卓工程
+        script: npx cap sync android
+      - name: 打包 APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
+      - android/app/build/outputs/apk/release/*.apk
+    publishing:
+      email:
+        recipients:
+          - your@email.com
+        notify:
+          success: true
+          failure: true
