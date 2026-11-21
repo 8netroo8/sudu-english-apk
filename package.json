@@ -1,9 +1,9 @@
 {
   "name": "english-learning",
   "productName": "素读",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "六级语境学习桌面应用：读真题、选词与钉住",
+  "description": "六级语境精读：读真题、圈词、留原句",
   "author": "AyuSne",
   "main": "out/main/index.js",
   "engines": {
