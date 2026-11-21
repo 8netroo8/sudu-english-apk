@@ -181,6 +181,34 @@
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
 
+  /*
+   * 右栏在手机上没有位置：主词形、词典、学习内容与「更多」直接接在原句下面，
+   * 不用再去点那条竖着的「学习内容」抽屉。
+   */
+  .entries-rail-inline {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin-top: 24px;
+    padding: 16px 0 0;
+    overflow: visible;
+    border: 0;
+    border-top: 1px solid var(--rule);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .entries-rail-inline .entries-rail-title {
+    margin-top: 0;
+    font-size: 20px;
+    line-height: 28px;
+  }
+
+  .entries-rail-inline .entry-notes {
+    margin-bottom: 8px;
+  }
+
   /* 底部导航固定在视口最上层，别被页面里的浮层吃掉。 */
   .globals {
     z-index: 60;
