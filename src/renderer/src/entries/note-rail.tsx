@@ -24,6 +24,7 @@ export function NoteRail({
   page,
   entries,
   open,
+  inline = false,
   onToggle,
   onChanged,
   onEntryGone
@@ -32,6 +33,8 @@ export function NoteRail({
   /** 全部词条，给「更多」里的合并、拆分与移动挑目标。 */
   entries: readonly EntryListItem[]
   open: boolean
+  /** 窄屏把主词形、词典与学习内容直接排在原句下面，不再藏进抽屉。 */
+  inline?: boolean
   onToggle: () => void
   onChanged: (message: string) => void
   onEntryGone: () => void
@@ -65,7 +68,7 @@ export function NoteRail({
     draftRef.current?.focus()
   }
 
-  if (!open) {
+  if (!open && !inline) {
     return (
       <aside className="entries-rail entries-rail-closed" aria-label="学习内容">
         <button
@@ -169,21 +172,31 @@ export function NoteRail({
   }
 
   return (
-    <aside className="entries-rail entries-rail-open" aria-label="学习内容">
-      <header className="entries-rail-head">
-        <p className="section-label">学习内容</p>
-        <button
-          type="button"
-          className="entries-rail-close"
-          aria-label="收起学习内容"
-          onClick={onToggle}
-        >
-          ×
-        </button>
-      </header>
+    <aside
+      className={inline ? 'entries-rail entries-rail-inline' : 'entries-rail entries-rail-open'}
+      aria-label="学习内容"
+    >
+      {inline ? null : (
+        <header className="entries-rail-head">
+          <p className="section-label">学习内容</p>
+          <button
+            type="button"
+            className="entries-rail-close"
+            aria-label="收起学习内容"
+            onClick={onToggle}
+          >
+            ×
+          </button>
+        </header>
+      )}
 
-      <h2 className="entries-rail-title">{page.entry.mainForm}</h2>
-      <p className="entries-rail-meta">{entryHeadlineText(page.entry)}</p>
+      {/* 手机上是接着上文往下排的，词形与出处上面已经写过一遍，不重复。 */}
+      {inline ? null : (
+        <>
+          <h2 className="entries-rail-title">{page.entry.mainForm}</h2>
+          <p className="entries-rail-meta">{entryHeadlineText(page.entry)}</p>
+        </>
+      )}
 
       <section className="entries-rail-section" aria-label="主词形">
         <p className="section-label">主词形</p>
