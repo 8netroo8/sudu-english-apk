@@ -674,7 +674,16 @@
     max-height: calc(100vh - 96px);
   }
 
-  /* 注释行内展开，挂在原词后；伪元素不进入复制与模型文本。 */
+  .reading-write-error {
+    max-width: 620px;
+  }
+}
+
+/*
+ * 注释行内展开：手机窄屏用真实文本（见 paragraph.tsx 的 reading-gloss），
+ * 只有 821–999 这段既放不下页边注、又还没进紧凑布局的宽度才用伪元素。
+ */
+@media (min-width: 821px) and (max-width: 999px) {
   .reading[data-annotations="visible"] .reading-annotated::after {
     content: "（" attr(data-gloss) "）";
     margin-left: 0.12em;
@@ -683,10 +692,21 @@
     font-size: max(12px, 0.6em);
     vertical-align: 0.32em;
   }
+}
 
-  .reading-write-error {
-    max-width: 620px;
-  }
+/* 窄屏的注释小字：跟原词同一行，字号小一档，不可选中。 */
+.reading-gloss {
+  margin-left: 0.12em;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: max(12px, 0.6em);
+  letter-spacing: 0;
+  vertical-align: 0.32em;
+  user-select: none;
+}
+
+.reading[data-annotations="hidden"] .reading-gloss {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
