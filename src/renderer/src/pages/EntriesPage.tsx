@@ -9,6 +9,7 @@ import { SentenceRow } from '../entries/sentence-row'
 import { failureText } from '../errors'
 import { laterToggleLabel } from '../later/format'
 import { useLaterMark } from '../later/use-later-mark'
+import { useCompactLayout } from '../use-compact-layout'
 import { navigate, replaceRoute } from '../navigate'
 import {
   entriesViewState,
@@ -38,6 +39,8 @@ export function EntriesPage({ entryId, entrySentenceId }: { entryId: string | nu
   const [hint, setHint] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
   const later = useLaterMark()
+  // 窄屏没有右栏可用：主词形、词典与学习内容直接排在原句下面。
+  const compact = useCompactLayout()
 
   const listRequest = useRef(0)
   const pageRequest = useRef(0)
@@ -317,14 +320,16 @@ export function EntriesPage({ entryId, entrySentenceId }: { entryId: string | nu
                 >
                   {laterToggleLabel(page.entry.laterMarkedAt !== null)}
                 </button>
-                <button
-                  type="button"
-                  className="button"
-                  aria-expanded={railOpen}
-                  onClick={() => setRailOpen(true)}
-                >
-                  学习内容 {page.entry.noteCount}
-                </button>
+                {compact ? null : (
+                  <button
+                    type="button"
+                    className="button"
+                    aria-expanded={railOpen}
+                    onClick={() => setRailOpen(true)}
+                  >
+                    学习内容 {page.entry.noteCount}
+                  </button>
+                )}
               </div>
             </header>
 
@@ -419,6 +424,7 @@ export function EntriesPage({ entryId, entrySentenceId }: { entryId: string | nu
           page={page}
           entries={allEntries?.entries ?? []}
           open={railOpen}
+          inline={compact}
           onToggle={() => setRailOpen((open) => !open)}
           onChanged={(message) => refresh(message)}
           onEntryGone={entryGone}
