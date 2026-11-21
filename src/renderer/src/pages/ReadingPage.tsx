@@ -40,6 +40,7 @@ import {
   type PanelState
 } from '../reading/entry-panel'
 import { ReadingParagraphView } from '../reading/paragraph'
+import { useCompactLayout } from '../use-compact-layout'
 import { readParagraphSelection, type ReadingSelection } from '../reading/selection'
 import { ReadingSettingsPanel } from '../reading/settings-panel'
 import { useReadingPosition } from '../reading/use-reading-position'
@@ -96,6 +97,8 @@ export function ReadingPage({ articleId, entrySentenceId, reselect, readingFrom 
   /** 触屏上长按选中后没有 mouseup，只能靠 selectionchange 判断要不要给「收为词条」按钮。 */
   const [touchSelection, setTouchSelection] = useState(false)
   const later = useLaterMark()
+  // 窄屏不放页边注：中文夹注改为跟在原词后面的行内小字。
+  const compact = useCompactLayout()
 
   const { scrollRef, position, writeError, retryWrite } = useReadingPosition(view)
   const settingsRequest = useRef(0)
@@ -879,6 +882,7 @@ export function ReadingPage({ articleId, entrySentenceId, reselect, readingFrom 
                   key={paragraph.id}
                   paragraph={paragraph}
                   blocks={paragraphBlocks}
+                  inlineGlosses={compact}
                   focusedSentenceOrdinal={
                     focus !== null && focus.sentence.paragraphId === paragraph.id
                       ? focus.sentence.sentenceOrdinal
