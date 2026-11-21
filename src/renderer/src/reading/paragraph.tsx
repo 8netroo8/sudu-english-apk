@@ -8,12 +8,15 @@ import type { ReadingBlock, ReadingPart } from './content'
 export function ReadingParagraphView({
   paragraph,
   blocks,
-  focusedSentenceOrdinal = null
+  focusedSentenceOrdinal = null,
+  inlineGlosses = false
 }: {
   paragraph: ReadingParagraph
   blocks: readonly ReadingBlock[]
   /** 从词条跳过来时，这一句整句底色高亮。 */
   focusedSentenceOrdinal?: number | null
+  /** 窄屏没有页边注的位置，注释直接跟在原词后面。 */
+  inlineGlosses?: boolean
 }) {
   return (
     <div className="reading-row">
@@ -39,7 +42,7 @@ export function ReadingParagraphView({
               data-sentence-ordinal={block.ordinal}
             >
               {block.parts.map((part, partIndex) => (
-                <ReadingPartView key={partIndex} part={part} />
+                <ReadingPartView key={partIndex} part={part} inlineGlosses={inlineGlosses} />
               ))}
             </span>
           )
@@ -59,7 +62,13 @@ export function ReadingParagraphView({
   )
 }
 
-function ReadingPartView({ part }: { part: ReadingPart }) {
+function ReadingPartView({
+  part,
+  inlineGlosses = false
+}: {
+  part: ReadingPart
+  inlineGlosses?: boolean
+}) {
   const mark = part.mark
   const className = [
     part.kind === 'annotation' ? 'reading-annotated' : '',
@@ -83,6 +92,7 @@ function ReadingPartView({ part }: { part: ReadingPart }) {
     return (
       <span className={className || undefined} data-gloss={part.gloss} {...markProps}>
         {part.text}
+        {inlineGlosses ? <span className="reading-gloss">{`（${part.gloss}）`}</span> : null}
       </span>
     )
   }
